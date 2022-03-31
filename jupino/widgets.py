@@ -1,4 +1,6 @@
-from typing import Any, Callable, Optional, Tuple
+import functools
+import inspect
+from typing import Any, Callable, Optional, Tuple, Union
 
 import ipywidgets as w
 from IPython.display import display
@@ -18,7 +20,77 @@ from jupino.interface import (
 
 class DefaultExampleXWidgetFactory(ExampleXWidgetFactory):
     def create(self, example: Example) -> Optional[w.Widget]:
-        return w.Label(value=example.x)
+        return w.HTML(value=f"{example.x}")
+
+
+class FunctionBasedExampleLabelsWidgetFactory(ExampleLabelsWidgetFactory):
+    def __init__(
+        self,
+        fn: Callable[
+            [Example, Any], Union[w.Widget, Tuple[w.Widget, LabelValueGetter]]
+        ],
+        **fn_kwargs,
+    ):
+        self.fn = fn
+        self.fn_kwargs = fn_kwargs
+        params = inspect.signature(self.fn).parameters
+        if not set(["example", "labels"]).issubset(params):
+            raise ValueError("Function must accept example and labels parameters")
+
+    def create(
+        self, example: Example, labels: Any
+    ) -> Optional[Tuple[w.Widget, LabelValueGetter]]:
+        output = self.fn(example, labels, **self.fn_kwargs)
+        if isinstance(output, w.Widget):
+            if not hasattr(output, "value"):
+                msg = f"The widget returned by {self.fn} does not have 'value' attribute so value_getter cannot be automatically inferred."
+                msg = f"{msg}. Modify the function {self.fn} to return a tuple of widget and a callable which accepts no parameters and returns a value from the widget"
+                raise ValueError(msg)
+
+            widget, value_getter = output, lambda: getattr(output, "value")
+            return widget, value_getter
+
+        elif isinstance(output, tuple):
+            widget, value_getter = output
+            if not inspect.isfunction(value_getter):
+                raise ValueError(
+                    f"Second item of tuple returned by {self.fn} must be a callable which accepts no parameters and returns value of the widget"
+                )
+            return widget, value_getter
+        else:
+            msg = f"Function {self.fn} that creates label widget must (example, labels) as parameters and return"
+            msg = f"{msg} either a Jupyter widget or a tuple of Jupyter widget and a callable that takes no argument and returns the value of this widget"
+            raise ValueError(msg)
+
+
+def label_widget(f) -> Callable[..., FunctionBasedExampleLabelsWidgetFactory]:
+    @functools.wraps(f)
+    def factory(**kwargs):
+        return FunctionBasedExampleLabelsWidgetFactory(fn=f, **kwargs)
+
+    return factory
+
+
+@label_widget
+def toggle_buttons(example: Example, labels: Any, **kwargs):
+    return w.ToggleButtons(options=labels, value=example.y, **kwargs)
+
+
+@label_widget
+def select_multiple(example: Example, labels: Any, **kwargs):
+    return w.SelectMultiple(
+        options=labels, value=list(example.y) if example.y else [], **kwargs
+    )
+
+
+@label_widget
+def dropdown(example: Example, labels: Any, **kwargs):
+    return w.Dropdown(options=labels, value=example.y, **kwargs)
+
+
+@label_widget
+def radio_button(example: Example, labels: Any, **kwargs):
+    return w.RadioButtons(options=labels, value=example.y, **kwargs)
 
 
 class DefaultExampleLabelsWidgetFactory(ExampleLabelsWidgetFactory):
@@ -28,9 +100,10 @@ class DefaultExampleLabelsWidgetFactory(ExampleLabelsWidgetFactory):
     def create(
         self, example: Example, labels: Any
     ) -> Optional[Tuple[w.Widget, LabelValueGetter]]:
-        dd = w.Dropdown(options=labels, value=example.y)
-        value_getter = lambda: dd.value
-        return dd, value_getter
+        if len(labels) <= 10:
+            return toggle_buttons().create(example, labels)
+        else:
+            return dropdown().create(example, labels)
 
 
 class DefaultExampleWidgetFactory(ExampleWidgetFactory):
@@ -155,7 +228,7 @@ class DefaultControlsWidgetFactory(ControlsWidgetFactory):
             )
         )
 
-        btn_submit = w.Button(description="Submit")
+        btn_submit = w.Button(description="Submit", button_style="primary")
         btn_submit.on_click(
             lambda _: event_handler.on_submit(
                 ControlWidgetEvent(event_name="submit", sender=btn_submit)
@@ -236,28 +309,28 @@ class AnnotationSessionWidget:
         )
 
         with self.example_out:
-            self.example_out.clear_output()
+            self.example_out.clear_output(wait=False)
             display(example_widget)
 
         with self.summary_out:
-            self.summary_out.clear_output()
+            self.summary_out.clear_output(wait=False)
             summary_widget = self.summary_widget_factory.create(session=self.session)
             display(summary_widget)
 
         return example, value_getter
 
     def display(self):
-        # example, labels = self.session.get_next_example()
-        # self._display_example(example=example, labels=labels)
         with self.summary_out:
+            self.summary_out.clear_output(wait=False)
             summary_widget = self.summary_widget_factory.create(session=self.session)
             display(summary_widget)
 
         with self.example_out:
+            self.example_out.clear_output(wait=False)
             display(w.Label(value="Click Next to start annotating"))
 
         with self.controls_out:
-            self.controls_out.clear_output()
+            self.controls_out.clear_output(wait=False)
             controls_widget = self.controls_widget_factory.create(
                 session=self.session,
                 event_handler=self.controls_event_handler,
