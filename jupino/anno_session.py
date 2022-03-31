@@ -15,19 +15,40 @@ class Example:
 
 class AnnotationSession:
     def __init__(
-        self, examples: List[Example], labels: Union[Any, Callable[[Example], Any]]
+        self,
+        examples: List[Example],
+        labels: Union[Any, Callable[[Example], Any]],
     ):
         self.examples = examples
-        self._examples_iter = iter(self.examples)
+        self.current_example_idx = -1
         if isfunction(labels):
             self.label_getter = labels
         else:
             self.label_getter = lambda _: labels
 
-    def get_next_example(self) -> Optional[Tuple[Example, Any]]:
-        example = next(self._examples_iter, None)
-        if example is None:
-            return None
+    def get_current_example(self) -> Tuple[Optional[Example], Optional[Any]]:
+        if not 0 <= self.current_example_idx < len(self.examples):
+            return None, None
+
+        example = self.examples[self.current_example_idx]
+        return example, self.label_getter(example)
+
+    def get_next_example(self) -> Tuple[Optional[Example], Optional[Any]]:
+        if self.current_example_idx >= len(self.examples) - 1:
+            return None, None
+
+        self.current_example_idx += 1
+        example = self.examples[self.current_example_idx]
+
+        labels = self.label_getter(example)
+        return example, labels
+
+    def get_previous_example(self) -> Tuple[Optional[Example], Optional[Any]]:
+        if self.current_example_idx <= 0:
+            return None, None
+
+        self.current_example_idx -= 1
+        example = self.examples[self.current_example_idx]
 
         labels = self.label_getter(example)
         return example, labels
