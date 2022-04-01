@@ -2,8 +2,9 @@
 
 jupino is an extensible data annotation tool that leverages Jupyter notebook's display system to quickly annotate data without the hassle of setting up databases, web servers etc. that many other annotation tools need. Please note that the intention of this tool is not to replace or compete with other annotation tools but rather give people a easy and quick way to annotate data using Jupyter notebooks.
 
-## Quckstart
+**To install run:** `pip install jupino`
 
+## Quckstart
 ```python
 import jupino as jp
 titles = [
