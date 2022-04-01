@@ -1,10 +1,7 @@
-import functools
-import inspect
-from typing import Any, Callable, Optional, Tuple, Union
+from typing import Any, Callable, Optional, Tuple
 
 import ipywidgets as w
 from IPython.display import display
-
 from jupino.anno_session import AnnotationSession, Example
 from jupino.interface import (
     ControlsEventHandler,
@@ -16,81 +13,12 @@ from jupino.interface import (
     LabelValueGetter,
     SummaryWidgetFactory,
 )
+from jupino.widgets.labels import dropdown, toggle_buttons
 
 
 class DefaultExampleXWidgetFactory(ExampleXWidgetFactory):
     def create(self, example: Example) -> Optional[w.Widget]:
         return w.HTML(value=f"{example.x}")
-
-
-class FunctionBasedExampleLabelsWidgetFactory(ExampleLabelsWidgetFactory):
-    def __init__(
-        self,
-        fn: Callable[
-            [Example, Any], Union[w.Widget, Tuple[w.Widget, LabelValueGetter]]
-        ],
-        **fn_kwargs,
-    ):
-        self.fn = fn
-        self.fn_kwargs = fn_kwargs
-        params = inspect.signature(self.fn).parameters
-        if not set(["example", "labels"]).issubset(params):
-            raise ValueError("Function must accept example and labels parameters")
-
-    def create(
-        self, example: Example, labels: Any
-    ) -> Optional[Tuple[w.Widget, LabelValueGetter]]:
-        output = self.fn(example, labels, **self.fn_kwargs)
-        if isinstance(output, w.Widget):
-            if not hasattr(output, "value"):
-                msg = f"The widget returned by {self.fn} does not have 'value' attribute so value_getter cannot be automatically inferred."
-                msg = f"{msg}. Modify the function {self.fn} to return a tuple of widget and a callable which accepts no parameters and returns a value from the widget"
-                raise ValueError(msg)
-
-            widget, value_getter = output, lambda: getattr(output, "value")
-            return widget, value_getter
-
-        elif isinstance(output, tuple):
-            widget, value_getter = output
-            if not inspect.isfunction(value_getter):
-                raise ValueError(
-                    f"Second item of tuple returned by {self.fn} must be a callable which accepts no parameters and returns value of the widget"
-                )
-            return widget, value_getter
-        else:
-            msg = f"Function {self.fn} that creates label widget must (example, labels) as parameters and return"
-            msg = f"{msg} either a Jupyter widget or a tuple of Jupyter widget and a callable that takes no argument and returns the value of this widget"
-            raise ValueError(msg)
-
-
-def label_widget(f) -> Callable[..., FunctionBasedExampleLabelsWidgetFactory]:
-    @functools.wraps(f)
-    def factory(**kwargs):
-        return FunctionBasedExampleLabelsWidgetFactory(fn=f, **kwargs)
-
-    return factory
-
-
-@label_widget
-def toggle_buttons(example: Example, labels: Any, **kwargs):
-    return w.ToggleButtons(options=labels, value=example.y, **kwargs)
-
-
-@label_widget
-def select_multiple(example: Example, labels: Any, **kwargs):
-    return w.SelectMultiple(
-        options=labels, value=list(example.y) if example.y else [], **kwargs
-    )
-
-
-@label_widget
-def dropdown(example: Example, labels: Any, **kwargs):
-    return w.Dropdown(options=labels, value=example.y, **kwargs)
-
-
-@label_widget
-def radio_button(example: Example, labels: Any, **kwargs):
-    return w.RadioButtons(options=labels, value=example.y, **kwargs)
 
 
 class DefaultExampleLabelsWidgetFactory(ExampleLabelsWidgetFactory):
@@ -137,6 +65,7 @@ class DefaultExampleWidgetFactory(ExampleWidgetFactory):
         ui_children = []
         if x_widget:
             ui_children.append(x_widget)
+        ui_children.append(w.HTML(value="<hr>"))
         ui_children.append(labels_widget)
         return w.VBox(children=ui_children), value_getter
 
@@ -175,7 +104,7 @@ class DefaultControlsEventHandler(ControlsEventHandler):
         ] = None
 
         # settings
-        self.auto_submit = False
+        self.auto_submit = True
 
     def _save_annotation(self):
         if self.current_example_annotation_getter is None:
@@ -235,7 +164,7 @@ class DefaultControlsWidgetFactory(ControlsWidgetFactory):
             )
         )
 
-        chk_auto_submit = w.Checkbox(description="Auto submit on Next?")
+        chk_auto_submit = w.Checkbox(description="Auto submit on Next?", value=True)
 
         def chk_callback(change):
             if change.get("name") != "value":
@@ -298,6 +227,12 @@ class AnnotationSessionWidget:
     def _display_example(
         self, example: Optional[Example], labels: Any
     ) -> Optional[Tuple[Example, LabelValueGetter]]:
+
+        with self.summary_out:
+            self.summary_out.clear_output(wait=False)
+            summary_widget = self.summary_widget_factory.create(session=self.session)
+            display(summary_widget)
+
         if example is None:
             with self.example_out:
                 self.example_out.clear_output()
@@ -311,11 +246,6 @@ class AnnotationSessionWidget:
         with self.example_out:
             self.example_out.clear_output(wait=False)
             display(example_widget)
-
-        with self.summary_out:
-            self.summary_out.clear_output(wait=False)
-            summary_widget = self.summary_widget_factory.create(session=self.session)
-            display(summary_widget)
 
         return example, value_getter
 
