@@ -1,3 +1,4 @@
+import inspect
 from typing import Any, Callable, Optional, Tuple
 
 import ipywidgets as w
@@ -13,7 +14,8 @@ from jupino.interface import (
     LabelValueGetter,
     SummaryWidgetFactory,
 )
-from jupino.widgets.labels import dropdown, toggle_buttons
+from jupino.widgets.labels import dropdown, label_widget, toggle_buttons
+from jupino.widgets.x import x_widget
 
 
 class DefaultExampleXWidgetFactory(ExampleXWidgetFactory):
@@ -106,7 +108,7 @@ class DefaultControlsEventHandler(ControlsEventHandler):
         # settings
         self.auto_submit = True
 
-    def _save_annotation(self):
+    def save_annotation(self):
         if self.current_example_annotation_getter is None:
             return
 
@@ -114,7 +116,7 @@ class DefaultControlsEventHandler(ControlsEventHandler):
         example.y = value_getter()
 
     def on_submit(self, event: ControlWidgetEvent):
-        self._save_annotation()
+        self.save_annotation()
 
         example, labels = self.session.get_current_example()
         self._trigger_display(example=example, labels=labels)
@@ -124,7 +126,7 @@ class DefaultControlsEventHandler(ControlsEventHandler):
 
     def on_next(self, event: ControlWidgetEvent):
         if self.auto_submit:
-            self._save_annotation()
+            self.save_annotation()
 
         example, labels = self.session.get_next_example()
         self._trigger_display(example=example, labels=labels)
@@ -296,6 +298,12 @@ def annotate(
         examples = [Example(x=e) for e in examples]
 
     sess = AnnotationSession(examples=examples, labels=labels)
+
+    if x_widget_factory and inspect.isfunction(x_widget_factory):
+        x_widget_factory = x_widget(x_widget_factory)()
+
+    if labels_widget_factory and inspect.isfunction(labels_widget_factory):
+        labels_widget_factory = label_widget(labels_widget_factory)()
 
     # if example widget factory is not given but one of x_widget_factory or labels_widget_factory
     # is given then create an ExampleWidgetFactory using those

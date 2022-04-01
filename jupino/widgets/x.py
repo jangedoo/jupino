@@ -4,6 +4,7 @@ from typing import Callable, List, Optional, Union
 import ipywidgets as w
 from jupino.anno_session import Example
 from jupino.interface import ExampleXWidgetFactory
+from jupino.widgets import utils
 
 
 class FunctionBasedExampleXWidgetFactory(ExampleXWidgetFactory):
@@ -31,8 +32,7 @@ def html(example: Example):
 @x_widget
 def image(example: Example, width=300, height=300, **kwargs):
     if isinstance(example.x, str):
-        with open(example.x, "rb") as f:
-            image = f.read()
+        image = utils.open_image(example.x)
     else:
         image = example.x
     return w.Image(value=image, width=width, height=height, **kwargs)
